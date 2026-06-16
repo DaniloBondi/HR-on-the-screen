@@ -292,6 +292,9 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
                         }
 
                         // 2. Generate payload based on fetched JSON structure, adapting to its exact keys to perfectly match the schema.
+                        val rrListAppended = bluetoothManager.getAndClearAccumulatedRrIntervals()
+                        val rrJsonArray = org.json.JSONArray(rrListAppended)
+
                         val payloadString: String = if (!currentJsonString.isNullOrBlank()) {
                             try {
                                 val originalObj = org.json.JSONObject(currentJsonString!!)
@@ -311,6 +314,9 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
                                             }
                                             key.equals("timestamp", ignoreCase = true) -> {
                                                 obj.put(key, System.currentTimeMillis() / 1000)
+                                            }
+                                            key.equals("rr_intervals", ignoreCase = true) || key.equals("rr_list", ignoreCase = true) || key.equals("rrlist", ignoreCase = true) -> {
+                                                obj.put(key, rrJsonArray)
                                             }
                                             else -> {
                                                 val value = obj.opt(key)
@@ -334,6 +340,9 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
                                     // If no key matched, add "bpm" by default to guarantee the heart rate is uploaded
                                     originalObj.put("bpm", bpm)
                                 }
+                                // Guarantee root level RR interval lists for external client compatibility
+                                originalObj.put("rr_intervals", rrJsonArray)
+                                originalObj.put("rr_list", rrJsonArray)
                                 originalObj.toString()
                             } catch (e: Exception) {
                                 try {
@@ -348,8 +357,12 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
                                                     item.put(key, bpm)
                                                 } else if (key.equals("timestamp", ignoreCase = true)) {
                                                     item.put(key, System.currentTimeMillis() / 1000)
+                                                } else if (key.equals("rr_intervals", ignoreCase = true) || key.equals("rr_list", ignoreCase = true)) {
+                                                    item.put(key, rrJsonArray)
                                                 }
                                             }
+                                            item.put("rr_intervals", rrJsonArray)
+                                            item.put("rr_list", rrJsonArray)
                                         }
                                     }
                                     originalArr.toString()
@@ -359,6 +372,8 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
                                         put("bpm", bpm)
                                         put("heart_rate", bpm)
                                         put("timestamp", System.currentTimeMillis() / 1000)
+                                        put("rr_intervals", rrJsonArray)
+                                        put("rr_list", rrJsonArray)
                                     }.toString()
                                 }
                             }
@@ -368,6 +383,8 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
                                 put("bpm", bpm)
                                 put("heart_rate", bpm)
                                 put("timestamp", System.currentTimeMillis() / 1000)
+                                put("rr_intervals", rrJsonArray)
+                                put("rr_list", rrJsonArray)
                             }.toString()
                         }
 

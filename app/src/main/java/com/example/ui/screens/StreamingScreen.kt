@@ -293,7 +293,7 @@ fun StreamingScreen(
                                     )
                                     val isDefault = remoteApiUrl == "https://api.npoint.io/5d92312f8631a8376f81" || remoteApiUrl.isEmpty()
                                     Text(
-                                        text = if (isDefault) "https://www.npoint.io/docs/••••••••••••a8376f81" else remoteApiUrl,
+                                        text = if (isDefault) "https://api.npoint.io/5d92312f8631a8376f81" else remoteApiUrl,
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = MaterialTheme.colorScheme.onSurface,

@@ -48,6 +48,16 @@ class BluetoothHeartRateManager(private val context: Context) {
     private val _rrIntervals = MutableStateFlow<List<Int>>(emptyList())
     val rrIntervals: StateFlow<List<Int>> = _rrIntervals.asStateFlow()
 
+    private val _accumulatedRrIntervals = java.util.Collections.synchronizedList(mutableListOf<Int>())
+
+    fun getAndClearAccumulatedRrIntervals(): List<Int> {
+        return synchronized(_accumulatedRrIntervals) {
+            val copy = ArrayList(_accumulatedRrIntervals)
+            _accumulatedRrIntervals.clear()
+            copy
+        }
+    }
+
     private val _sensorBattery = MutableStateFlow(100)
     val sensorBattery: StateFlow<Int> = _sensorBattery.asStateFlow()
 
@@ -280,6 +290,12 @@ class BluetoothHeartRateManager(private val context: Context) {
         _currentBpm.value = bpm
         if (rrList.isNotEmpty()) {
             _rrIntervals.value = rrList
+            synchronized(_accumulatedRrIntervals) {
+                _accumulatedRrIntervals.addAll(rrList)
+                if (_accumulatedRrIntervals.size > 1000) {
+                    _accumulatedRrIntervals.subList(0, _accumulatedRrIntervals.size - 1000).clear()
+                }
+            }
         }
     }
 
@@ -326,6 +342,12 @@ class BluetoothHeartRateManager(private val context: Context) {
                 val variability = (Math.cos(simulationPhase * 1.5) * 45).toInt()
                 val simulatedRR = beatIntervalMs + variability + (-10..10).random()
                 _rrIntervals.value = listOf(simulatedRR)
+                synchronized(_accumulatedRrIntervals) {
+                    _accumulatedRrIntervals.add(simulatedRR)
+                    if (_accumulatedRrIntervals.size > 1000) {
+                        _accumulatedRrIntervals.subList(0, _accumulatedRrIntervals.size - 1000).clear()
+                    }
+                }
 
                 // Battery slowly decreases over minutes
                 if (Math.random() < 0.02) {
