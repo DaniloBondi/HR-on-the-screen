@@ -37,7 +37,9 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          cmdline-tools-version: '11.0.0'
+          # Use 'latest' so the action won't attempt to download a specific older cmdline-tools filename
+          # that may have been removed from Google's servers (prevents the 404 error).
+          cmdline-tools-version: 'latest'
           accept-android-sdk-licenses: true
           log-accepted-android-sdk-licenses: true
           packages: |
@@ -45,7 +47,17 @@ jobs:
             platforms;android-33
             build-tools;33.0.2
 
-      # NUOVO STEP FONDAMENTALE: Dà i permessi di esecuzione a Gradle
+      # Optional debug step (will print sdkmanager/source.properties if present)
+      - name: Inspect preinstalled sdkmanager
+        run: |
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
+          if [ -f /usr/local/lib/android/sdk/cmdline-tools/latest/source.properties ]; then
+            echo "source.properties:"
+            cat /usr/local/lib/android/sdk/cmdline-tools/latest/source.properties || true
+          fi
+          ls -la /usr/local/lib/android/sdk || true
+
+      # Make Gradle wrapper executable
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
