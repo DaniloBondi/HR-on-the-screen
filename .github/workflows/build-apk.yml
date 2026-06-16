@@ -2,18 +2,15 @@ name: Build Android APK
 
 on:
   push:
-    branches:
-      - main
-    tags:
-      - '**'
+    branches: [ main ]
+    tags: [ '**' ]
   workflow_dispatch:
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true' # opt into Node.js 24 for JavaScript actions now
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true' # opt into Node.js 24 now
 
 jobs:
   build:
-    name: Build debug APK
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
