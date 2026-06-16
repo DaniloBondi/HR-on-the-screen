@@ -1,6 +1,7 @@
 package com.example.viewmodel
 
 import android.app.Application
+import android.content.Context
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -11,12 +12,14 @@ import com.example.data.*
 import com.example.network.LiveVitalsHttpServer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 
 class VitalsViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -83,6 +86,31 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
     val pastSessions: StateFlow<List<HeartRateSession>> = repository.allItemsFlow()
     val apiTokens: StateFlow<List<ApiToken>> = repository.allTokensFlow()
 
+    private val sharedPrefs = application.getSharedPreferences("remote_streaming_prefs", Context.MODE_PRIVATE)
+
+    private val _remoteUplinkEnabled = MutableStateFlow(sharedPrefs.getBoolean("uplink_enabled", false))
+    val remoteUplinkEnabled: StateFlow<Boolean> = _remoteUplinkEnabled.asStateFlow()
+
+    private val _remoteApiUrl = MutableStateFlow(sharedPrefs.getString("api_url", "") ?: "")
+    val remoteApiUrl: StateFlow<String> = _remoteApiUrl.asStateFlow()
+
+    private val _remoteApiToken = MutableStateFlow(sharedPrefs.getString("api_token", "") ?: "")
+    val remoteApiToken: StateFlow<String> = _remoteApiToken.asStateFlow()
+
+    private val _remoteAuthMethod = MutableStateFlow(sharedPrefs.getString("auth_method", "Auto") ?: "Auto")
+    val remoteAuthMethod: StateFlow<String> = _remoteAuthMethod.asStateFlow()
+
+    private val _remoteCustomHeaderName = MutableStateFlow(sharedPrefs.getString("custom_header", "X-API-KEY") ?: "X-API-KEY")
+    val remoteCustomHeaderName: StateFlow<String> = _remoteCustomHeaderName.asStateFlow()
+
+    private val _remoteUploadInterval = MutableStateFlow(sharedPrefs.getFloat("upload_interval", 1.0f))
+    val remoteUploadInterval: StateFlow<Float> = _remoteUploadInterval.asStateFlow()
+
+    private val _lastUploadStatus = MutableStateFlow("Not active")
+    val lastUploadStatus: StateFlow<String> = _lastUploadStatus.asStateFlow()
+
+    private var remoteUplinkJob: Job? = null
+
     init {
         // Collect DB preferences
         viewModelScope.launch {
@@ -117,6 +145,10 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
 
         // Auto-start web server on initialize to make it highly plug & play
         startHttpServer()
+        
+        if (sharedPrefs.getBoolean("uplink_enabled", false)) {
+            startRemoteUplinkJob()
+        }
     }
 
     // Server Control
@@ -141,6 +173,127 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
             httpServer = null
             _isServerRunning.value = false
         }
+    }
+
+    // Remote Uplink (Cloud Stream) Control
+    fun updateRemoteUplinkEnabled(enabled: Boolean) {
+        _remoteUplinkEnabled.value = enabled
+        sharedPrefs.edit().putBoolean("uplink_enabled", enabled).apply()
+        if (enabled) {
+            startRemoteUplinkJob()
+        } else {
+            stopRemoteUplinkJob()
+        }
+    }
+
+    fun updateRemoteApiUrl(url: String) {
+        _remoteApiUrl.value = url
+        sharedPrefs.edit().putString("api_url", url).apply()
+    }
+
+    fun updateRemoteApiToken(token: String) {
+        _remoteApiToken.value = token
+        sharedPrefs.edit().putString("api_token", token).apply()
+    }
+
+    fun updateRemoteAuthMethod(method: String) {
+        _remoteAuthMethod.value = method
+        sharedPrefs.edit().putString("auth_method", method).apply()
+    }
+
+    fun updateRemoteCustomHeaderName(name: String) {
+        _remoteCustomHeaderName.value = name
+        sharedPrefs.edit().putString("custom_header", name).apply()
+    }
+
+    fun updateRemoteUploadInterval(interval: Float) {
+        _remoteUploadInterval.value = interval
+        sharedPrefs.edit().putFloat("upload_interval", interval).apply()
+    }
+
+    fun startRemoteUplinkJob() {
+        remoteUplinkJob?.cancel()
+        remoteUplinkJob = viewModelScope.launch(Dispatchers.IO) {
+            val client = okhttp3.OkHttpClient.Builder()
+                .connectTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
+                .writeTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+
+            while (isActive) {
+                val isEnabled = _remoteUplinkEnabled.value
+                val url = _remoteApiUrl.value.trim()
+                val bpm = currentBpm.value
+
+                if (isEnabled && url.isNotEmpty() && bpm > 0) {
+                    try {
+                        val payload = org.json.JSONObject().apply {
+                            put("heart_rate", bpm)
+                            put("bpm", bpm)
+                            put("timestamp", System.currentTimeMillis() / 1000)
+
+                            val dataObj = org.json.JSONObject().apply {
+                                put("heart_rate", bpm)
+                                put("bpm", bpm)
+                            }
+                            put("data", dataObj)
+                        }
+
+                        val requestBody = okhttp3.RequestBody.create(
+                            "application/json".toMediaTypeOrNull(),
+                            payload.toString()
+                        )
+
+                        val requestBuilder = okhttp3.Request.Builder().url(url)
+                        requestBuilder.post(requestBody)
+
+                        val tokenVal = _remoteApiToken.value.trim()
+                        if (tokenVal.isNotEmpty()) {
+                            val authMethodVal = _remoteAuthMethod.value
+                            when (authMethodVal) {
+                                "Bearer" -> requestBuilder.addHeader("Authorization", "Bearer $tokenVal")
+                                "Token" -> requestBuilder.addHeader("Authorization", "Token $tokenVal")
+                                "X-API-KEY" -> requestBuilder.addHeader("X-API-Key", tokenVal)
+                                "Custom header" -> {
+                                    val customHeader = _remoteCustomHeaderName.value.trim()
+                                    if (customHeader.isNotEmpty()) {
+                                        requestBuilder.addHeader(customHeader, tokenVal)
+                                    }
+                                }
+                            }
+                        }
+
+                        client.newCall(requestBuilder.build()).execute().use { response ->
+                            if (response.isSuccessful) {
+                                _lastUploadStatus.value = "Active (Success at ${getCurrentTimeFormatted()})"
+                            } else {
+                                _lastUploadStatus.value = "Error (Code: ${response.code} at ${getCurrentTimeFormatted()})"
+                            }
+                        }
+                    } catch (e: Exception) {
+                        _lastUploadStatus.value = "Error (${e.localizedMessage ?: e.message} at ${getCurrentTimeFormatted()})"
+                    }
+                } else if (isEnabled && bpm == 0) {
+                    _lastUploadStatus.value = "Waiting (BPM is 0, connect sensor)"
+                } else {
+                    _lastUploadStatus.value = "Not active"
+                }
+
+                val delayMillis = (_remoteUploadInterval.value * 1000).toLong().coerceAtLeast(200L)
+                delay(delayMillis)
+            }
+        }
+    }
+
+    fun stopRemoteUplinkJob() {
+        remoteUplinkJob?.cancel()
+        remoteUplinkJob = null
+        _lastUploadStatus.value = "Stopped"
+    }
+
+    private fun getCurrentTimeFormatted(): String {
+        val sdf = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+        return sdf.format(java.util.Date())
     }
 
     fun updateServerPort(port: Int) {
@@ -385,6 +538,7 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
     override fun onCleared() {
         super.onCleared()
         stopHttpServer()
+        stopRemoteUplinkJob()
         bluetoothManager.stopSimulation()
         bluetoothManager.stopScanning()
         recordingJob?.cancel()

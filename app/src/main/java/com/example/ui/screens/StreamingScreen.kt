@@ -44,6 +44,14 @@ fun StreamingScreen(
     val tokensList by viewModel.apiTokens.collectAsState()
     val phoneIp = viewModel.getLocalIpAddress()
 
+    val remoteUplinkEnabled by viewModel.remoteUplinkEnabled.collectAsState()
+    val remoteApiUrl by viewModel.remoteApiUrl.collectAsState()
+    val remoteApiToken by viewModel.remoteApiToken.collectAsState()
+    val remoteAuthMethod by viewModel.remoteAuthMethod.collectAsState()
+    val remoteCustomHeaderName by viewModel.remoteCustomHeaderName.collectAsState()
+    val remoteUploadInterval by viewModel.remoteUploadInterval.collectAsState()
+    val lastUploadStatus by viewModel.lastUploadStatus.collectAsState()
+
     val context = LocalContext.current
     val primaryColor = MaterialTheme.colorScheme.primary
     val clipboardManager = LocalClipboardManager.current
@@ -51,6 +59,11 @@ fun StreamingScreen(
     var portInput by remember { mutableStateOf(serverPort.toString()) }
     var tokenLabelInput by remember { mutableStateOf("") }
     var showCreateTokenDialog by remember { mutableStateOf(false) }
+
+    var remoteUrlInput by remember(remoteApiUrl) { mutableStateOf(remoteApiUrl) }
+    var remoteTokenInput by remember(remoteApiToken) { mutableStateOf(remoteApiToken) }
+    var remoteCustomHeaderInput by remember(remoteCustomHeaderName) { mutableStateOf(remoteCustomHeaderName) }
+    var showAuthMethodDropdown by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = modifier
@@ -166,6 +179,206 @@ fun StreamingScreen(
                         ) {
                             Text("Update", fontWeight = FontWeight.Bold)
                         }
+                    }
+                }
+            }
+        }
+
+        // REMOTE CLOUD UPLINK CARD
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), shape = RoundedCornerShape(28.dp)),
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "STREAMING CLOUD REMOTO (REMOTE UPLINK)",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = primaryColor
+                            )
+                            Text(
+                                text = "Invia i dati via cloud se il PC e la App non sono sulla stessa rete",
+                                fontSize = 12.sp,
+                                color = Color.Gray
+                            )
+                        }
+
+                        Switch(
+                            checked = remoteUplinkEnabled,
+                            onCheckedChange = { isEnabled ->
+                                viewModel.updateRemoteUplinkEnabled(isEnabled)
+                                if (isEnabled) {
+                                    Toast.makeText(context, "Cloud Uplink attivato!", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "Cloud Uplink disattivato.", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = SwitchDefaults.colors(checkedThumbColor = primaryColor),
+                            modifier = Modifier.testTag("remote_uplink_toggle")
+                        )
+                    }
+
+                    // Last upload status banner
+                    val statusBgColor = when {
+                        !remoteUplinkEnabled -> Color.Gray.copy(alpha = 0.15f)
+                        lastUploadStatus.contains("Success") -> Color.Green.copy(alpha = 0.15f)
+                        lastUploadStatus.contains("Error") -> Color.Red.copy(alpha = 0.15f)
+                        else -> Color.Yellow.copy(alpha = 0.15f)
+                    }
+                    val statusTextColor = when {
+                        !remoteUplinkEnabled -> Color.Gray
+                        lastUploadStatus.contains("Success") -> Color.Green
+                        lastUploadStatus.contains("Error") -> Color.Red
+                        else -> Color.Yellow
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(statusBgColor, shape = RoundedCornerShape(12.dp))
+                            .border(0.5.dp, statusTextColor.copy(alpha = 0.3f), shape = RoundedCornerShape(12.dp))
+                            .padding(10.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = "Status",
+                                tint = statusTextColor,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Stato caricamento: $lastUploadStatus",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = statusTextColor
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Input Form Fields
+                    OutlinedTextField(
+                        value = remoteUrlInput,
+                        onValueChange = {
+                            remoteUrlInput = it
+                            viewModel.updateRemoteApiUrl(it)
+                        },
+                        label = { Text("API URL Remoto (es. https://sito.com/hr)") },
+                        placeholder = { Text("https://tuoservizio.com/endpoint") },
+                        modifier = Modifier.fillMaxWidth().testTag("remote_url_input"),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = remoteTokenInput,
+                            onValueChange = {
+                                remoteTokenInput = it
+                                viewModel.updateRemoteApiToken(it)
+                            },
+                            label = { Text("API Token") },
+                            placeholder = { Text("Token di autenticazione") },
+                            modifier = Modifier.weight(1f).testTag("remote_token_input"),
+                            singleLine = true
+                        )
+
+                        Box(modifier = Modifier.weight(1f)) {
+                            OutlinedTextField(
+                                value = remoteAuthMethod,
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("Metodo d'invio") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            // Transparent overlay to catch clicks reliable
+                            Box(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .clickable { showAuthMethodDropdown = true }
+                            )
+
+                            DropdownMenu(
+                                expanded = showAuthMethodDropdown,
+                                onDismissRequest = { showAuthMethodDropdown = false }
+                            ) {
+                                listOf("Auto", "Bearer", "Token", "X-API-KEY", "Custom header").forEach { method ->
+                                    DropdownMenuItem(
+                                        text = { Text(method) },
+                                        onClick = {
+                                            viewModel.updateRemoteAuthMethod(method)
+                                            showAuthMethodDropdown = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (remoteAuthMethod == "Custom header") {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = remoteCustomHeaderInput,
+                            onValueChange = {
+                                remoteCustomHeaderInput = it
+                                viewModel.updateRemoteCustomHeaderName(it)
+                            },
+                            label = { Text("Nome Custom Header") },
+                            placeholder = { Text("X-My-Header-Token") },
+                            modifier = Modifier.fillMaxWidth().testTag("remote_custom_header_input"),
+                            singleLine = true
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // FREQUENCY SLIDER
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Intervallo invio dati (secondi)",
+                                fontSize = 12.sp,
+                                color = Color.Gray
+                            )
+                            Text(
+                                text = "${"%.1f".format(remoteUploadInterval)}s",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = primaryColor
+                            )
+                        }
+                        Slider(
+                            value = remoteUploadInterval,
+                            onValueChange = { viewModel.updateRemoteUploadInterval(it) },
+                            valueRange = 0.5f..10.0f,
+                            steps = 19,
+                            colors = SliderDefaults.colors(
+                                thumbColor = primaryColor,
+                                activeTrackColor = primaryColor
+                            ),
+                            modifier = Modifier.testTag("remote_upload_interval_slider")
+                        )
                     }
                 }
             }
