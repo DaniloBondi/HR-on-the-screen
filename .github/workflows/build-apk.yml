@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true' # opt into Node.js 24 now
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
   build:
@@ -44,6 +44,10 @@ jobs:
             platform-tools
             platforms;android-33
             build-tools;33.0.2
+
+      # NUOVO STEP FONDAMENTALE: Dà i permessi di esecuzione a Gradle
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
 
       - name: Build APK (debug)
         run: ./gradlew assembleDebug --no-daemon
