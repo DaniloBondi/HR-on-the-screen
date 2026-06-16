@@ -518,6 +518,10 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
             0
         }
 
+        // Get and clear any accumulated RR intervals for streaming
+        val rrListAppended = bluetoothManager.getAndClearAccumulatedRrIntervals()
+        val rrJsonArray = JSONArray(rrListAppended)
+
         val root = JSONObject()
         root.put("connected", connectionState.value == ConnectionState.CONNECTED)
         root.put("device_name", deviceName.value.ifEmpty { "None Connected" })
@@ -530,6 +534,8 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
         root.put("stress_level", stressLevel)
         root.put("calories_burned", caloriesBurned)
         root.put("bpm_history", historyArray)
+        root.put("rr_intervals", rrJsonArray)
+        root.put("rr_list", rrJsonArray)
         root.put("timestamp", System.currentTimeMillis() / 1000)
 
         return root.toString()
