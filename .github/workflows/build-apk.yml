@@ -8,6 +8,9 @@ on:
       - '**'
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true' # opt into Node.js 24 for JavaScript actions now
+
 jobs:
   build:
     name: Build debug APK
@@ -37,11 +40,13 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          api-level: 33
-          build-tools: '33.0.2'
-          components: |
+          cmdline-tools-version: '11.0.0'
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: true
+          packages: |
             platform-tools
-            emulator
+            platforms;android-33
+            build-tools;33.0.2
 
       - name: Build APK (debug)
         run: ./gradlew assembleDebug --no-daemon
