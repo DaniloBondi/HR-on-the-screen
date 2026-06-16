@@ -260,21 +260,117 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
 
                 if (isEnabled && url.isNotEmpty() && bpm > 0) {
                     try {
-                        val payload = org.json.JSONObject().apply {
-                            put("heart_rate", bpm)
-                            put("bpm", bpm)
-                            put("timestamp", System.currentTimeMillis() / 1000)
-
-                            val dataObj = org.json.JSONObject().apply {
-                                put("heart_rate", bpm)
-                                put("bpm", bpm)
+                        // 1. Try to fetch the existing JSON structure from the remote endpoint to preserve schema structure and avoid 500 server errors due to unexpected property keys.
+                        var currentJsonString: String? = null
+                        try {
+                            val getRequestBuilder = okhttp3.Request.Builder().url(url).get()
+                            val tokenVal = _remoteApiToken.value.trim()
+                            if (tokenVal.isNotEmpty()) {
+                                val authMethodVal = _remoteAuthMethod.value
+                                when (authMethodVal) {
+                                    "Bearer" -> getRequestBuilder.addHeader("Authorization", "Bearer $tokenVal")
+                                    "Token" -> getRequestBuilder.addHeader("Authorization", "Token $tokenVal")
+                                    "X-API-KEY" -> getRequestBuilder.addHeader("X-API-Key", tokenVal)
+                                    "Custom header" -> {
+                                        val customHeader = _remoteCustomHeaderName.value.trim()
+                                        if (customHeader.isNotEmpty()) {
+                                            getRequestBuilder.addHeader(customHeader, tokenVal)
+                                        }
+                                    }
+                                }
                             }
-                            put("data", dataObj)
+                            client.newCall(getRequestBuilder.build()).execute().use { getResponse ->
+                                if (getResponse.isSuccessful) {
+                                    currentJsonString = getResponse.body?.string()
+                                }
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.e("VitalsViewModel", "Failed to fetch existing JSON from remote", e)
+                        }
+
+                        // 2. Generate payload based on fetched JSON structure, adapting to its exact keys to perfectly match the schema.
+                        val payloadString: String = if (!currentJsonString.isNullOrBlank()) {
+                            try {
+                                val originalObj = org.json.JSONObject(currentJsonString!!)
+                                var updatedAny = false
+
+                                fun updateObjectKeys(obj: org.json.JSONObject) {
+                                    val keys = obj.keys()
+                                    val keysList = mutableListOf<String>()
+                                    while (keys.hasNext()) {
+                                        keysList.add(keys.next())
+                                    }
+                                    for (key in keysList) {
+                                        when {
+                                            key.equals("bpm", ignoreCase = true) || key.equals("heart_rate", ignoreCase = true) || key.equals("heartrate", ignoreCase = true) -> {
+                                                obj.put(key, bpm)
+                                                updatedAny = true
+                                            }
+                                            key.equals("timestamp", ignoreCase = true) -> {
+                                                obj.put(key, System.currentTimeMillis() / 1000)
+                                            }
+                                            else -> {
+                                                val value = obj.opt(key)
+                                                if (value is org.json.JSONObject) {
+                                                    updateObjectKeys(value)
+                                                } else if (value is org.json.JSONArray) {
+                                                    for (i in 0 until value.length()) {
+                                                        val item = value.opt(i)
+                                                        if (item is org.json.JSONObject) {
+                                                            updateObjectKeys(item)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                updateObjectKeys(originalObj)
+                                if (!updatedAny) {
+                                    // If no key matched, add "bpm" by default to guarantee the heart rate is uploaded
+                                    originalObj.put("bpm", bpm)
+                                }
+                                originalObj.toString()
+                            } catch (e: Exception) {
+                                try {
+                                    val originalArr = org.json.JSONArray(currentJsonString!!)
+                                    for (i in 0 until originalArr.length()) {
+                                        val item = originalArr.opt(i)
+                                        if (item is org.json.JSONObject) {
+                                            val keys = item.keys()
+                                            while (keys.hasNext()) {
+                                                val key = keys.next()
+                                                if (key.equals("bpm", ignoreCase = true) || key.equals("heart_rate", ignoreCase = true) || key.equals("heartrate", ignoreCase = true)) {
+                                                    item.put(key, bpm)
+                                                } else if (key.equals("timestamp", ignoreCase = true)) {
+                                                    item.put(key, System.currentTimeMillis() / 1000)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    originalArr.toString()
+                                } catch (ex: Exception) {
+                                    // Fallback to simpler default keys
+                                    org.json.JSONObject().apply {
+                                        put("bpm", bpm)
+                                        put("heart_rate", bpm)
+                                        put("timestamp", System.currentTimeMillis() / 1000)
+                                    }.toString()
+                                }
+                            }
+                        } else {
+                            // Default layout fallback (no preceding schema or empty body)
+                            org.json.JSONObject().apply {
+                                put("bpm", bpm)
+                                put("heart_rate", bpm)
+                                put("timestamp", System.currentTimeMillis() / 1000)
+                            }.toString()
                         }
 
                         val requestBody = okhttp3.RequestBody.create(
                             "application/json".toMediaTypeOrNull(),
-                            payload.toString()
+                            payloadString
                         )
 
                         val requestBuilder = okhttp3.Request.Builder().url(url)
@@ -304,7 +400,9 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
                             if (response.isSuccessful) {
                                 _lastUploadStatus.value = "Active (Success at ${getCurrentTimeFormatted()})"
                             } else {
-                                _lastUploadStatus.value = "Error (Code: ${response.code} at ${getCurrentTimeFormatted()})"
+                                val errorBodyDump = response.body?.string() ?: ""
+                                val shortErr = if (errorBodyDump.length > 50) errorBodyDump.take(50) + "..." else errorBodyDump
+                                _lastUploadStatus.value = "Error (Code: ${response.code} at ${getCurrentTimeFormatted()})${if (shortErr.isNotEmpty()) " - $shortErr" else ""}"
                             }
                         }
                     } catch (e: Exception) {
