@@ -294,7 +294,7 @@ fun ConnectionScreen(
                         modifier = Modifier.padding(bottom = 6.dp)
                     )
                     Text(
-                        text = "If your physical sensor (e.g. Moofit) does not natively transmit RR interval data, decide how the app should respond:",
+                        text = "If your physical sensor does not natively transmit RR interval data, decide how the app should respond:",
                         fontSize = 12.sp,
                         color = Color.Gray,
                         modifier = Modifier.padding(bottom = 12.dp)
