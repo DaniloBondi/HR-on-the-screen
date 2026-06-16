@@ -263,7 +263,10 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
                         // 1. Try to fetch the existing JSON structure from the remote endpoint to preserve schema structure and avoid 500 server errors due to unexpected property keys.
                         var currentJsonString: String? = null
                         try {
-                            val getRequestBuilder = okhttp3.Request.Builder().url(url).get()
+                            val getRequestBuilder = okhttp3.Request.Builder()
+                                .url(url)
+                                .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36")
+                                .get()
                             val tokenVal = _remoteApiToken.value.trim()
                             if (tokenVal.isNotEmpty()) {
                                 val authMethodVal = _remoteAuthMethod.value
@@ -373,8 +376,14 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
                             payloadString
                         )
 
-                        val requestBuilder = okhttp3.Request.Builder().url(url)
-                        if (_remoteHttpMethod.value.equals("PUT", ignoreCase = true)) {
+                        val isNpoint = url.contains("npoint.io", ignoreCase = true)
+                        val actualMethod = if (isNpoint) "POST" else _remoteHttpMethod.value
+
+                        val requestBuilder = okhttp3.Request.Builder()
+                            .url(url)
+                            .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36")
+
+                        if (actualMethod.equals("PUT", ignoreCase = true)) {
                             requestBuilder.put(requestBody)
                         } else {
                             requestBuilder.post(requestBody)
