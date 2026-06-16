@@ -74,6 +74,7 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
     val sensorBattery: StateFlow<Int> = bluetoothManager.sensorBattery
     val rrIntervals: StateFlow<List<Int>> = bluetoothManager.rrIntervals
     val isSimulated: StateFlow<Boolean> = bluetoothManager.isSimulated
+    val isSensorRrCapable: StateFlow<Boolean?> = bluetoothManager.isSensorRrCapable
 
     // Last 100 historical readings for rolling live graph / server stream
     private val _rollingBpmHistory = MutableStateFlow<List<Pair<Long, Int>>>(emptyList())
@@ -112,9 +113,13 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
     private val _lastUploadStatus = MutableStateFlow("Not active")
     val lastUploadStatus: StateFlow<String> = _lastUploadStatus.asStateFlow()
 
+    private val _synthesizeRrIfMissing = MutableStateFlow(sharedPrefs.getBoolean("synthesize_rr_if_missing", true))
+    val synthesizeRrIfMissing: StateFlow<Boolean> = _synthesizeRrIfMissing.asStateFlow()
+
     private var remoteUplinkJob: Job? = null
 
     init {
+        bluetoothManager.setSynthesizeRrIfMissing(_synthesizeRrIfMissing.value)
         // Collect DB preferences
         viewModelScope.launch {
             repository.getDashboardPreferences().collect { prefs ->
@@ -242,6 +247,12 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
     fun updateRemoteUploadInterval(interval: Float) {
         _remoteUploadInterval.value = interval
         sharedPrefs.edit().putFloat("upload_interval", interval).apply()
+    }
+
+    fun updateSynthesizeRrIfMissing(enabled: Boolean) {
+        _synthesizeRrIfMissing.value = enabled
+        sharedPrefs.edit().putBoolean("synthesize_rr_if_missing", enabled).apply()
+        bluetoothManager.setSynthesizeRrIfMissing(enabled)
     }
 
     fun startRemoteUplinkJob() {
@@ -461,6 +472,8 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
         root.put("device_name", deviceName.value.ifEmpty { "None Connected" })
         root.put("bpm", bpm)
         root.put("battery", sensorBattery.value)
+        root.put("is_sensor_rr_capable", isSensorRrCapable.value)
+        root.put("synthesize_rr_if_missing", synthesizeRrIfMissing.value)
         root.put("average_bpm", averageBpm)
         root.put("max_bpm", maxBpm)
         root.put("session_duration_seconds", _recordingDurationSeconds.value)

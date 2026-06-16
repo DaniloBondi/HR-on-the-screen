@@ -48,6 +48,9 @@ class BluetoothHeartRateManager(private val context: Context) {
     private val _rrIntervals = MutableStateFlow<List<Int>>(emptyList())
     val rrIntervals: StateFlow<List<Int>> = _rrIntervals.asStateFlow()
 
+    private val _isSensorRrCapable = MutableStateFlow<Boolean?>(null)
+    val isSensorRrCapable: StateFlow<Boolean?> = _isSensorRrCapable.asStateFlow()
+
     private val _accumulatedRrIntervalsForUplink = java.util.Collections.synchronizedList(mutableListOf<Int>())
     private val _accumulatedRrIntervalsForLocalStreaming = java.util.Collections.synchronizedList(mutableListOf<Int>())
 
@@ -81,6 +84,13 @@ class BluetoothHeartRateManager(private val context: Context) {
 
     private var simulationHeartRateBase = 72
     private var simulationPhase = 0.0
+    private var lastNotificationTime: Long = 0
+    private var synthesizeRrIfMissing = true
+
+    fun setSynthesizeRrIfMissing(enabled: Boolean) {
+        synthesizeRrIfMissing = enabled
+        Log.d("BLE_HRM", "synthesizeRrIfMissing in BLE manager: $enabled")
+    }
 
     // Standard UUIDs
     private val HEART_RATE_SERVICE_UUID = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb")
@@ -175,6 +185,7 @@ class BluetoothHeartRateManager(private val context: Context) {
 
         _currentBpm.value = 0
         _rrIntervals.value = emptyList()
+        _isSensorRrCapable.value = null
 
         try {
             bluetoothGatt = device.connectGatt(context, false, gattCallback)
@@ -193,6 +204,7 @@ class BluetoothHeartRateManager(private val context: Context) {
         _connectionState.value = ConnectionState.DISCONNECTED
         _deviceName.value = ""
         _currentBpm.value = 0
+        _isSensorRrCapable.value = null
     }
 
     private val gattCallback = object : BluetoothGattCallback() {
@@ -203,6 +215,7 @@ class BluetoothHeartRateManager(private val context: Context) {
                 gatt.close()
                 bluetoothGatt = null
                 _connectionState.value = ConnectionState.ERROR
+                _isSensorRrCapable.value = null
                 return
             }
 
@@ -220,6 +233,7 @@ class BluetoothHeartRateManager(private val context: Context) {
                 bluetoothGatt = null
                 _deviceName.value = ""
                 _currentBpm.value = 0
+                _isSensorRrCapable.value = null
             }
         }
 
@@ -284,15 +298,42 @@ class BluetoothHeartRateManager(private val context: Context) {
         }
 
         val rrPresent = (flags and 0x10) != 0
+        _isSensorRrCapable.value = rrPresent
         val rrList = mutableListOf<Int>()
         if (rrPresent && offset < value.size) {
             while (offset + 1 < value.size) {
                 val low = value[offset].toInt() and 0xFF
                 val high = value[offset + 1].toInt() and 0xFF
                 offset += 2
-                // RR Interval in units of 1/1024 second.
-                val rr = (high shl 8) or low
-                rrList.add(rr)
+                // RR Interval is natively in units of 1/1024 second. 
+                // We convert it to milliseconds to unify representation across the app.
+                val rrRaw = (high shl 8) or low
+                val rrMs = (rrRaw * 1000) / 1024
+                rrList.add(rrMs)
+            }
+        } else {
+            // FALLBACK ENGINE: If the physical sensor (e.g. Moofit HR6) does not natively offer
+            // RR intervals, we dynamically reconstruct realistic RR intervals derived from the current BPM if chosen by user.
+            if (synthesizeRrIfMissing && bpm > 0) {
+                val now = System.currentTimeMillis()
+                val elapsedMs = if (lastNotificationTime > 0) (now - lastNotificationTime) else 1000L
+                lastNotificationTime = now
+                
+                val nominalRrMs = 60000 / bpm
+                // Ensure number of beats correlates naturally with elapsed time (typically 1 to 3 per second)
+                val nominalCount = (elapsedMs.toDouble() / nominalRrMs).toInt()
+                val numBeats = nominalCount.coerceIn(1, 4)
+                
+                // Inject realistic heart rate variability (respiratory sinus arrhythmia and random vagal flux)
+                val baseTime = now / 1000.0
+                for (i in 0 until numBeats) {
+                    val rsaVariance = (Math.sin(baseTime * 0.8 + i) * (nominalRrMs * 0.05)).toInt()
+                    val randomNoise = (-15..15).random()
+                    val reconstructedRR = nominalRrMs + rsaVariance + randomNoise
+                    rrList.add(reconstructedRR.coerceIn(300, 2000))
+                }
+            } else {
+                lastNotificationTime = System.currentTimeMillis()
             }
         }
 
@@ -311,6 +352,8 @@ class BluetoothHeartRateManager(private val context: Context) {
                     _accumulatedRrIntervalsForLocalStreaming.subList(0, _accumulatedRrIntervalsForLocalStreaming.size - 1000).clear()
                 }
             }
+        } else {
+            _rrIntervals.value = emptyList()
         }
     }
 

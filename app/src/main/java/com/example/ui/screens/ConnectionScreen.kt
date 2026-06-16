@@ -271,6 +271,94 @@ fun ConnectionScreen(
             }
         }
 
+        // BIOMETRIC RR INTERVAL CONFIGURATION
+        item {
+            val synthesizeRrIfMissing by viewModel.synthesizeRrIfMissing.collectAsState()
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(
+                        1.dp,
+                        MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(28.dp)
+                    ),
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "BIOMETRIC RR COUPLING PREFERENCE",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = primaryColor,
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
+                    Text(
+                        text = "If your physical sensor (e.g. Moofit) does not natively transmit RR interval data, decide how the app should respond:",
+                        fontSize = 12.sp,
+                        color = Color.Gray,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.updateSynthesizeRrIfMissing(true) }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = synthesizeRrIfMissing,
+                            onClick = { viewModel.updateSynthesizeRrIfMissing(true) }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "Synthesize RR interval data",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Derives realistic heart rate variability from BPM, enabling all clinical tests and Streamlit dashboards",
+                                fontSize = 11.sp,
+                                color = Color.Gray
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.updateSynthesizeRrIfMissing(false) }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = !synthesizeRrIfMissing,
+                            onClick = { viewModel.updateSynthesizeRrIfMissing(false) }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "Send NO RR interval data (empty list)",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "No simulated RR intervals will be generated. The Streamlit dashboard will fall back to BPM-based RMSSD calculations",
+                                fontSize = 11.sp,
+                                color = Color.Gray
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         // PHYSICAL BLE SCROLL AREA (Requires permission)
         item {
             Column {

@@ -51,6 +51,8 @@ fun MainDashboardScreen(
     val connectionState by viewModel.connectionState.collectAsState()
     val sensorBattery by viewModel.sensorBattery.collectAsState()
     val rrIntervals by viewModel.rrIntervals.collectAsState()
+    val isSensorRrCapable by viewModel.isSensorRrCapable.collectAsState()
+    val synthesizeRrIfMissing by viewModel.synthesizeRrIfMissing.collectAsState()
 
     var isCustomizerMode by remember { mutableStateOf(false) }
     var sessionLabelInput by remember { mutableStateOf("") }
@@ -218,7 +220,9 @@ fun MainDashboardScreen(
                                     connectionState = connectionState,
                                     battery = sensorBattery,
                                     deviceName = viewModel.deviceName.collectAsState().value,
-                                    primaryColor = themePrimary
+                                    primaryColor = themePrimary,
+                                    isSensorRrCapable = isSensorRrCapable,
+                                    synthesizeRrIfMissing = synthesizeRrIfMissing
                                 )
                             }
                             "beats_chart" -> {
@@ -308,7 +312,9 @@ fun VitalsDialWidget(
     connectionState: ConnectionState,
     battery: Int,
     deviceName: String,
-    primaryColor: Color
+    primaryColor: Color,
+    isSensorRrCapable: Boolean?,
+    synthesizeRrIfMissing: Boolean
 ) {
     Card(
         modifier = Modifier
@@ -472,6 +478,67 @@ fun VitalsDialWidget(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = 8.dp)
             )
+
+            if (connectionState == ConnectionState.CONNECTED) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Battery Level
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.FavoriteBorder, // Standard battery icon placeholder or star or customized icon
+                            contentDescription = "Battery Status",
+                            tint = if (battery > 25) Color(0xFF00E676) else Color.Red,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Battery: $battery%",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                        )
+                    }
+
+                    // RR support status
+                    val rrTextSelected = when (isSensorRrCapable) {
+                        true -> "RR: Native"
+                        false -> if (synthesizeRrIfMissing) "RR: Reconstructed" else "RR: None"
+                        null -> "RR: Checking..."
+                    }
+                    val rrColorSelected = when (isSensorRrCapable) {
+                        true -> Color(0xFF00E676) // green
+                        false -> if (synthesizeRrIfMissing) Color(0xFFFF9800) else Color.Red // orange/red
+                        null -> Color.Gray
+                    }
+                    val rrIconSelected = when (isSensorRrCapable) {
+                        true -> Icons.Default.CheckCircle
+                        false -> if (synthesizeRrIfMissing) Icons.Default.Refresh else Icons.Default.Warning
+                        null -> Icons.Default.Info
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = rrIconSelected,
+                            contentDescription = "RR Status",
+                            tint = rrColorSelected,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = rrTextSelected,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                        )
+                    }
+                }
+            }
         }
     }
 }
