@@ -3,17 +3,11 @@ name: Build Android APK
 on:
   push:
     branches: [ main ]
-    tags: [ '**' ]
   workflow_dispatch:
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,36 +18,21 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/gradle-wrapper.properties', '**/*.gradle*', '**/build.gradle*') }}
-          restore-keys: |
-            gradle-${{ runner.os }}-
+      # Sostituiamo setup-android con un comando diretto:
+      # Questo metodo è standard e non causa avvisi di Node.js
+      - name: Setup Android SDK
+        run: |
+          echo "SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "platform-tools" "platforms;android-33" "build-tools;33.0.2"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          cmdline-tools-version: '11.0.0'
-          accept-android-sdk-licenses: true
-          log-accepted-android-sdk-licenses: true
-          packages: |
-            platform-tools
-            platforms;android-33
-            build-tools;33.0.2
-
-      # NUOVO STEP FONDAMENTALE: Dà i permessi di esecuzione a Gradle
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
       - name: Build APK (debug)
         run: ./gradlew assembleDebug --no-daemon
 
-      - name: Upload APK artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk
-          path: app/build/outputs/apk/**/*.apk
+          path: app/build/outputs/apk/debug/*.apk
