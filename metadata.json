@@ -1,0 +1,6 @@
+{
+  "name": "HRonthescreen",
+  "description": "Acquire real-time data from BLE heart rate monitors, customize your mobile dashboard, and stream live vitals",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
