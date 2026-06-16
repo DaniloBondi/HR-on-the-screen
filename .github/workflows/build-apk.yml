@@ -8,6 +8,8 @@ on:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  # Choose a dedicated SDK root in the runner home to avoid relying on preinstalled
+  ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
 
 jobs:
   build:
@@ -34,30 +36,53 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          # Use 'latest' so the action won't attempt to download a specific older cmdline-tools filename
-          # that may have been removed from Google's servers (prevents the 404 error).
-          cmdline-tools-version: 'latest'
-          accept-android-sdk-licenses: true
-          log-accepted-android-sdk-licenses: true
-          packages: |
-            platform-tools
-            platforms;android-33
-            build-tools;33.0.2
-
-      # Optional debug step (will print sdkmanager/source.properties if present)
-      - name: Inspect preinstalled sdkmanager
+      - name: Prepare Android SDK dirs
         run: |
-          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
-          if [ -f /usr/local/lib/android/sdk/cmdline-tools/latest/source.properties ]; then
-            echo "source.properties:"
-            cat /usr/local/lib/android/sdk/cmdline-tools/latest/source.properties || true
-          fi
-          ls -la /usr/local/lib/android/sdk || true
+          mkdir -p "${ANDROID_SDK_ROOT}/cmdline-tools"
+          mkdir -p "${ANDROID_SDK_ROOT}/platforms"
+          mkdir -p "${ANDROID_SDK_ROOT}/platform-tools"
 
-      # Make Gradle wrapper executable
+      - name: Download Android command-line tools (fallback)
+        run: |
+          # If this file 404s in the future, replace it with the latest file listed on:
+          # https://developer.android.com/studio#command-tools
+          TOOL_VERSION_ZIP=commandlinetools-linux-9477386_latest.zip
+          URL="https://dl.google.com/android/repository/${TOOL_VERSION_ZIP}"
+          echo "Downloading $URL"
+          curl -fSL "$URL" -o /tmp/cmdline.zip
+          unzip -q /tmp/cmdline.zip -d /tmp/cmdline
+          # The zip unpacks into a top-level 'cmdline-tools' dir, move it into SDK with layout:
+          # $ANDROID_SDK_ROOT/cmdline-tools/latest/...
+          mkdir -p "${ANDROID_SDK_ROOT}/cmdline-tools/latest"
+          mv /tmp/cmdline/cmdline-tools/* "${ANDROID_SDK_ROOT}/cmdline-tools/latest/"
+
+      - name: Add sdkmanager and platform-tools to PATH
+        run: |
+          echo "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "${ANDROID_SDK_ROOT}/platform-tools" >> $GITHUB_PATH
+
+      - name: Install Android SDK packages and accept licenses
+        env:
+          JAVA_HOME: ${{ steps.setup-java.outputs.java-home || '' }}
+        run: |
+          # Ensure sdkmanager exists
+          ls -la "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin" || true
+
+          # Update repo indexes (may be required for older toolsets)
+          sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" --update || true
+
+          # Install required packages. Quoted as separate arguments.
+          sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" "platform-tools" "platforms;android-33" "build-tools;33.0.2"
+
+          # Accept all licenses non-interactively
+          yes | sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" --licenses
+
+      - name: Inspect SDK (debug)
+        run: |
+          echo "SDK root: ${ANDROID_SDK_ROOT}"
+          ls -la "${ANDROID_SDK_ROOT}" || true
+          sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" --list || true
+
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
