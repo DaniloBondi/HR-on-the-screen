@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Create
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -49,6 +50,7 @@ fun StreamingScreen(
     val remoteApiToken by viewModel.remoteApiToken.collectAsState()
     val remoteAuthMethod by viewModel.remoteAuthMethod.collectAsState()
     val remoteCustomHeaderName by viewModel.remoteCustomHeaderName.collectAsState()
+    val remoteHttpMethod by viewModel.remoteHttpMethod.collectAsState()
     val remoteUploadInterval by viewModel.remoteUploadInterval.collectAsState()
     val lastUploadStatus by viewModel.lastUploadStatus.collectAsState()
 
@@ -64,6 +66,8 @@ fun StreamingScreen(
     var remoteTokenInput by remember(remoteApiToken) { mutableStateOf(remoteApiToken) }
     var remoteCustomHeaderInput by remember(remoteCustomHeaderName) { mutableStateOf(remoteCustomHeaderName) }
     var showAuthMethodDropdown by remember { mutableStateOf(false) }
+    var showHttpMethodDropdown by remember { mutableStateOf(false) }
+    var isEditingUrl by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = modifier
@@ -268,19 +272,93 @@ fun StreamingScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Input Form Fields
-                    OutlinedTextField(
-                        value = remoteUrlInput,
-                        onValueChange = {
-                            remoteUrlInput = it
-                            viewModel.updateRemoteApiUrl(it)
-                        },
-                        label = { Text("API URL Remoto (es. https://sito.com/hr)") },
-                        placeholder = { Text("https://tuoservizio.com/endpoint") },
-                        modifier = Modifier.fillMaxWidth().testTag("remote_url_input"),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
-                    )
+                    // Input Form Fields (Hidden/Masked by default)
+                    if (!isEditingUrl) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth().testTag("masked_url_card"),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "API URL REMOTO",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = primaryColor
+                                    )
+                                    val isDefault = remoteApiUrl == "https://api.npoint.io/5d92312f8631a8376f81" || remoteApiUrl.isEmpty()
+                                    Text(
+                                        text = if (isDefault) "https://www.npoint.io/docs/••••••••••••a8376f81" else remoteApiUrl,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                    if (isDefault) {
+                                        Text(
+                                            text = "Utilizzando npoint.io di default (Consigliato)",
+                                            fontSize = 11.sp,
+                                            color = primaryColor
+                                        )
+                                    }
+                                }
+                                IconButton(
+                                    onClick = { isEditingUrl = true },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Create,
+                                        contentDescription = "Edit URL",
+                                        tint = primaryColor,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        Column {
+                            OutlinedTextField(
+                                value = remoteUrlInput,
+                                onValueChange = {
+                                    remoteUrlInput = it
+                                    viewModel.updateRemoteApiUrl(it)
+                                },
+                                label = { Text("Fornisci un nuovo API URL") },
+                                placeholder = { Text("https://tuoservizio.com/endpoint") },
+                                modifier = Modifier.fillMaxWidth().testTag("remote_url_input"),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                TextButton(
+                                    onClick = {
+                                        viewModel.resetUplinkToDefault()
+                                        remoteUrlInput = "https://api.npoint.io/5d92312f8631a8376f81"
+                                        isEditingUrl = false
+                                        Toast.makeText(context, "Url ripristinato al default!", Toast.LENGTH_SHORT).show()
+                                    }
+                                ) {
+                                    Text("Ripristina Default", fontSize = 11.sp)
+                                }
+                                TextButton(
+                                    onClick = { isEditingUrl = false }
+                                ) {
+                                    Text("OK", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = primaryColor)
+                                }
+                            }
+                        }
+                    }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
@@ -331,6 +409,47 @@ fun StreamingScreen(
                                 }
                             }
                         }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            OutlinedTextField(
+                                value = remoteHttpMethod,
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("Metodo HTTP") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .clickable { showHttpMethodDropdown = true }
+                            )
+
+                            DropdownMenu(
+                                expanded = showHttpMethodDropdown,
+                                onDismissRequest = { showHttpMethodDropdown = false }
+                            ) {
+                                listOf("POST", "PUT").forEach { method ->
+                                    DropdownMenuItem(
+                                        text = { Text(method) },
+                                        onClick = {
+                                            viewModel.updateRemoteHttpMethod(method)
+                                            showHttpMethodDropdown = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        // We can leave the other space empty or add a placeholder
+                        Spacer(modifier = Modifier.weight(1f))
                     }
 
                     if (remoteAuthMethod == "Custom header") {

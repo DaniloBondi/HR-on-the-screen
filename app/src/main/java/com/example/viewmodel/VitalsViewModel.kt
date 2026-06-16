@@ -91,7 +91,7 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
     private val _remoteUplinkEnabled = MutableStateFlow(sharedPrefs.getBoolean("uplink_enabled", false))
     val remoteUplinkEnabled: StateFlow<Boolean> = _remoteUplinkEnabled.asStateFlow()
 
-    private val _remoteApiUrl = MutableStateFlow(sharedPrefs.getString("api_url", "") ?: "")
+    private val _remoteApiUrl = MutableStateFlow(sharedPrefs.getString("api_url", "https://api.npoint.io/5d92312f8631a8376f81") ?: "https://api.npoint.io/5d92312f8631a8376f81")
     val remoteApiUrl: StateFlow<String> = _remoteApiUrl.asStateFlow()
 
     private val _remoteApiToken = MutableStateFlow(sharedPrefs.getString("api_token", "") ?: "")
@@ -102,6 +102,9 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _remoteCustomHeaderName = MutableStateFlow(sharedPrefs.getString("custom_header", "X-API-KEY") ?: "X-API-KEY")
     val remoteCustomHeaderName: StateFlow<String> = _remoteCustomHeaderName.asStateFlow()
+
+    private val _remoteHttpMethod = MutableStateFlow(sharedPrefs.getString("http_method", "PUT") ?: "PUT")
+    val remoteHttpMethod: StateFlow<String> = _remoteHttpMethod.asStateFlow()
 
     private val _remoteUploadInterval = MutableStateFlow(sharedPrefs.getFloat("upload_interval", 1.0f))
     val remoteUploadInterval: StateFlow<Float> = _remoteUploadInterval.asStateFlow()
@@ -186,6 +189,31 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun getProcessedRemoteApiUrl(): String {
+        var rawUrl = _remoteApiUrl.value.trim()
+        if (rawUrl.isEmpty()) {
+            rawUrl = "https://api.npoint.io/5d92312f8631a8376f81"
+        }
+        // Map docs URL to API URL
+        if (rawUrl.contains("/docs/")) {
+            val parts = rawUrl.split("/docs/")
+            if (parts.size > 1) {
+                val id = parts[1].trim()
+                if (id.isNotEmpty()) {
+                    return "https://api.npoint.io/$id"
+                }
+            }
+        }
+        return rawUrl
+    }
+
+    fun resetUplinkToDefault() {
+        updateRemoteApiUrl("https://api.npoint.io/5d92312f8631a8376f81")
+        updateRemoteHttpMethod("PUT")
+        updateRemoteApiToken("")
+        updateRemoteAuthMethod("Auto")
+    }
+
     fun updateRemoteApiUrl(url: String) {
         _remoteApiUrl.value = url
         sharedPrefs.edit().putString("api_url", url).apply()
@@ -206,6 +234,11 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
         sharedPrefs.edit().putString("custom_header", name).apply()
     }
 
+    fun updateRemoteHttpMethod(method: String) {
+        _remoteHttpMethod.value = method
+        sharedPrefs.edit().putString("http_method", method).apply()
+    }
+
     fun updateRemoteUploadInterval(interval: Float) {
         _remoteUploadInterval.value = interval
         sharedPrefs.edit().putFloat("upload_interval", interval).apply()
@@ -222,7 +255,7 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
 
             while (isActive) {
                 val isEnabled = _remoteUplinkEnabled.value
-                val url = _remoteApiUrl.value.trim()
+                val url = getProcessedRemoteApiUrl()
                 val bpm = currentBpm.value
 
                 if (isEnabled && url.isNotEmpty() && bpm > 0) {
@@ -245,7 +278,11 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
                         )
 
                         val requestBuilder = okhttp3.Request.Builder().url(url)
-                        requestBuilder.post(requestBody)
+                        if (_remoteHttpMethod.value.equals("PUT", ignoreCase = true)) {
+                            requestBuilder.put(requestBody)
+                        } else {
+                            requestBuilder.post(requestBody)
+                        }
 
                         val tokenVal = _remoteApiToken.value.trim()
                         if (tokenVal.isNotEmpty()) {
