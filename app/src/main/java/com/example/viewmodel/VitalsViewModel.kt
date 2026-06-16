@@ -292,97 +292,31 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
                         }
 
                         // 2. Generate payload based on fetched JSON structure, adapting to its exact keys to perfectly match the schema.
-                        val rrListAppended = bluetoothManager.getAndClearAccumulatedRrIntervals()
+                        val rrListAppended = bluetoothManager.getAndClearAccumulatedRrIntervalsForUplink()
                         val rrJsonArray = org.json.JSONArray(rrListAppended)
 
-                        val payloadString: String = if (!currentJsonString.isNullOrBlank()) {
-                            try {
-                                val originalObj = org.json.JSONObject(currentJsonString!!)
-                                var updatedAny = false
-
-                                fun updateObjectKeys(obj: org.json.JSONObject) {
-                                    val keys = obj.keys()
-                                    val keysList = mutableListOf<String>()
-                                    while (keys.hasNext()) {
-                                        keysList.add(keys.next())
-                                    }
-                                    for (key in keysList) {
-                                        when {
-                                            key.equals("bpm", ignoreCase = true) || key.equals("heart_rate", ignoreCase = true) || key.equals("heartrate", ignoreCase = true) -> {
-                                                obj.put(key, bpm)
-                                                updatedAny = true
-                                            }
-                                            key.equals("timestamp", ignoreCase = true) -> {
-                                                obj.put(key, System.currentTimeMillis() / 1000)
-                                            }
-                                            key.equals("rr_intervals", ignoreCase = true) || key.equals("rr_list", ignoreCase = true) || key.equals("rrlist", ignoreCase = true) -> {
-                                                obj.put(key, rrJsonArray)
-                                            }
-                                            else -> {
-                                                val value = obj.opt(key)
-                                                if (value is org.json.JSONObject) {
-                                                    updateObjectKeys(value)
-                                                } else if (value is org.json.JSONArray) {
-                                                    for (i in 0 until value.length()) {
-                                                        val item = value.opt(i)
-                                                        if (item is org.json.JSONObject) {
-                                                            updateObjectKeys(item)
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                updateObjectKeys(originalObj)
-                                if (!updatedAny) {
-                                    // If no key matched, add "bpm" by default to guarantee the heart rate is uploaded
-                                    originalObj.put("bpm", bpm)
-                                }
-                                // Guarantee root level RR interval lists for external client compatibility
-                                originalObj.put("rr_intervals", rrJsonArray)
-                                originalObj.put("rr_list", rrJsonArray)
-                                originalObj.toString()
-                            } catch (e: Exception) {
+                        val payloadString: String = try {
+                            val baseObj = if (!currentJsonString.isNullOrBlank()) {
                                 try {
-                                    val originalArr = org.json.JSONArray(currentJsonString!!)
-                                    for (i in 0 until originalArr.length()) {
-                                        val item = originalArr.opt(i)
-                                        if (item is org.json.JSONObject) {
-                                            val keys = item.keys()
-                                            while (keys.hasNext()) {
-                                                val key = keys.next()
-                                                if (key.equals("bpm", ignoreCase = true) || key.equals("heart_rate", ignoreCase = true) || key.equals("heartrate", ignoreCase = true)) {
-                                                    item.put(key, bpm)
-                                                } else if (key.equals("timestamp", ignoreCase = true)) {
-                                                    item.put(key, System.currentTimeMillis() / 1000)
-                                                } else if (key.equals("rr_intervals", ignoreCase = true) || key.equals("rr_list", ignoreCase = true)) {
-                                                    item.put(key, rrJsonArray)
-                                                }
-                                            }
-                                            item.put("rr_intervals", rrJsonArray)
-                                            item.put("rr_list", rrJsonArray)
-                                        }
-                                    }
-                                    originalArr.toString()
-                                } catch (ex: Exception) {
-                                    // Fallback to simpler default keys
-                                    org.json.JSONObject().apply {
-                                        put("bpm", bpm)
-                                        put("heart_rate", bpm)
-                                        put("timestamp", System.currentTimeMillis() / 1000)
-                                        put("rr_intervals", rrJsonArray)
-                                        put("rr_list", rrJsonArray)
-                                    }.toString()
+                                    org.json.JSONObject(currentJsonString!!)
+                                } catch (e: Exception) {
+                                    org.json.JSONObject()
                                 }
+                            } else {
+                                org.json.JSONObject()
                             }
-                        } else {
-                            // Default layout fallback (no preceding schema or empty body)
+                            
+                            baseObj.put("bpm", bpm)
+                            baseObj.put("heart_rate", bpm)
+                            baseObj.put("timestamp", System.currentTimeMillis())
+                            baseObj.put("rr_intervals", rrJsonArray)
+                            baseObj.put("rr_list", rrJsonArray)
+                            baseObj.toString()
+                        } catch (e: Exception) {
                             org.json.JSONObject().apply {
                                 put("bpm", bpm)
                                 put("heart_rate", bpm)
-                                put("timestamp", System.currentTimeMillis() / 1000)
+                                put("timestamp", System.currentTimeMillis())
                                 put("rr_intervals", rrJsonArray)
                                 put("rr_list", rrJsonArray)
                             }.toString()
@@ -519,7 +453,7 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         // Get and clear any accumulated RR intervals for streaming
-        val rrListAppended = bluetoothManager.getAndClearAccumulatedRrIntervals()
+        val rrListAppended = bluetoothManager.getAndClearAccumulatedRrIntervalsForLocalStreaming()
         val rrJsonArray = JSONArray(rrListAppended)
 
         val root = JSONObject()
@@ -536,7 +470,7 @@ class VitalsViewModel(application: Application) : AndroidViewModel(application) 
         root.put("bpm_history", historyArray)
         root.put("rr_intervals", rrJsonArray)
         root.put("rr_list", rrJsonArray)
-        root.put("timestamp", System.currentTimeMillis() / 1000)
+        root.put("timestamp", System.currentTimeMillis())
 
         return root.toString()
     }

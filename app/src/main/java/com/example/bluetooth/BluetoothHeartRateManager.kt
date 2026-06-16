@@ -48,12 +48,21 @@ class BluetoothHeartRateManager(private val context: Context) {
     private val _rrIntervals = MutableStateFlow<List<Int>>(emptyList())
     val rrIntervals: StateFlow<List<Int>> = _rrIntervals.asStateFlow()
 
-    private val _accumulatedRrIntervals = java.util.Collections.synchronizedList(mutableListOf<Int>())
+    private val _accumulatedRrIntervalsForUplink = java.util.Collections.synchronizedList(mutableListOf<Int>())
+    private val _accumulatedRrIntervalsForLocalStreaming = java.util.Collections.synchronizedList(mutableListOf<Int>())
 
-    fun getAndClearAccumulatedRrIntervals(): List<Int> {
-        return synchronized(_accumulatedRrIntervals) {
-            val copy = ArrayList(_accumulatedRrIntervals)
-            _accumulatedRrIntervals.clear()
+    fun getAndClearAccumulatedRrIntervalsForUplink(): List<Int> {
+        return synchronized(_accumulatedRrIntervalsForUplink) {
+            val copy = ArrayList(_accumulatedRrIntervalsForUplink)
+            _accumulatedRrIntervalsForUplink.clear()
+            copy
+        }
+    }
+
+    fun getAndClearAccumulatedRrIntervalsForLocalStreaming(): List<Int> {
+        return synchronized(_accumulatedRrIntervalsForLocalStreaming) {
+            val copy = ArrayList(_accumulatedRrIntervalsForLocalStreaming)
+            _accumulatedRrIntervalsForLocalStreaming.clear()
             copy
         }
     }
@@ -290,10 +299,16 @@ class BluetoothHeartRateManager(private val context: Context) {
         _currentBpm.value = bpm
         if (rrList.isNotEmpty()) {
             _rrIntervals.value = rrList
-            synchronized(_accumulatedRrIntervals) {
-                _accumulatedRrIntervals.addAll(rrList)
-                if (_accumulatedRrIntervals.size > 1000) {
-                    _accumulatedRrIntervals.subList(0, _accumulatedRrIntervals.size - 1000).clear()
+            synchronized(_accumulatedRrIntervalsForUplink) {
+                _accumulatedRrIntervalsForUplink.addAll(rrList)
+                if (_accumulatedRrIntervalsForUplink.size > 1000) {
+                    _accumulatedRrIntervalsForUplink.subList(0, _accumulatedRrIntervalsForUplink.size - 1000).clear()
+                }
+            }
+            synchronized(_accumulatedRrIntervalsForLocalStreaming) {
+                _accumulatedRrIntervalsForLocalStreaming.addAll(rrList)
+                if (_accumulatedRrIntervalsForLocalStreaming.size > 1000) {
+                    _accumulatedRrIntervalsForLocalStreaming.subList(0, _accumulatedRrIntervalsForLocalStreaming.size - 1000).clear()
                 }
             }
         }
@@ -342,10 +357,16 @@ class BluetoothHeartRateManager(private val context: Context) {
                 val variability = (Math.cos(simulationPhase * 1.5) * 45).toInt()
                 val simulatedRR = beatIntervalMs + variability + (-10..10).random()
                 _rrIntervals.value = listOf(simulatedRR)
-                synchronized(_accumulatedRrIntervals) {
-                    _accumulatedRrIntervals.add(simulatedRR)
-                    if (_accumulatedRrIntervals.size > 1000) {
-                        _accumulatedRrIntervals.subList(0, _accumulatedRrIntervals.size - 1000).clear()
+                synchronized(_accumulatedRrIntervalsForUplink) {
+                    _accumulatedRrIntervalsForUplink.add(simulatedRR)
+                    if (_accumulatedRrIntervalsForUplink.size > 1000) {
+                        _accumulatedRrIntervalsForUplink.subList(0, _accumulatedRrIntervalsForUplink.size - 1000).clear()
+                    }
+                }
+                synchronized(_accumulatedRrIntervalsForLocalStreaming) {
+                    _accumulatedRrIntervalsForLocalStreaming.add(simulatedRR)
+                    if (_accumulatedRrIntervalsForLocalStreaming.size > 1000) {
+                        _accumulatedRrIntervalsForLocalStreaming.subList(0, _accumulatedRrIntervalsForLocalStreaming.size - 1000).clear()
                     }
                 }
 
